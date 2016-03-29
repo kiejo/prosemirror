@@ -369,7 +369,13 @@ function fromClipboard(pm, dataTransfer, plainText) {
   if (!html && !txt) return null
   let doc
   if ((plainText || !html) && txt) {
-    doc = parseFrom(pm.schema, pm.signalPipelined("transformPastedText", txt), "text")
+    // Allow conversion of pasted text to a custom format (e.g. json)
+    // Workaround until ProseMirror/prosemirror#221 is closed
+    let converted = pm.signalPipelined("convertPastedText", txt)
+    if (converted && converted.format && converted.content)
+      doc = parseFrom(pm.schema, converted.content, converted.format)
+    else
+      doc = parseFrom(pm.schema, pm.signalPipelined("transformPastedText", txt), "text")
   } else {
     let dom = document.createElement("div")
     dom.innerHTML = pm.signalPipelined("transformPastedHTML", html)
