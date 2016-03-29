@@ -1,4 +1,4 @@
-import {Transform, Step, Remapping} from "../transform"
+import {Transform, Step, Remapping, TransformError} from "../transform"
 import {Node} from "../model"
 import {cmpNode, cmpStr} from "./cmp"
 import {Failure} from "./failure"
@@ -111,18 +111,20 @@ function testStepJSON(tr) {
   cmpNode(tr.doc, newTR.doc)
 }
 
-export function testTransform(tr, expect) {
-  if (tr.failed) {
-    if (expect != "fail") throw new Failure("Transform failed unexpectedly: " + tr.failed)
+export function testTransform(delayedTr, doc, expect) {
+  let tr
+  try {
+    tr = delayedTr.get(doc)
+  } catch (e) {
+    if (!(e instanceof TransformError)) throw e
+    if (expect != "fail") throw new Failure("Transform failed unexpectedly: " + e)
     return
-  } else if (expect == "fail") {
-    throw new Failure("Transform succeeded unexpectedly")
   }
+  if (expect == "fail")
+    throw new Failure("Transform succeeded unexpectedly")
 
   cmpNode(tr.doc, expect)
-  let inverted = invert(tr)
-  if (inverted.failed) throw new Failure("Inverting transform failed: " + inverted.failed)
-  cmpNode(inverted.doc, tr.before, "inverted")
+  cmpNode(invert(tr).doc, tr.before, "inverted")
 
   testStepJSON(tr)
 

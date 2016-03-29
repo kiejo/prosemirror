@@ -177,7 +177,7 @@ Image.register("command", "insert", {
 // ;; #path=bullet_list:wrap #kind=command
 // Wrap the selection in a bullet list.
 //
-// **Keybindings:** Shift-Mod-8
+// **Keybindings:** Shift-Ctrl-8
 BulletList.register("command", "wrap", {
   derive: {list: true},
   label: "Wrap the selection in a bullet list",
@@ -189,13 +189,13 @@ BulletList.register("command", "wrap", {
       path: "M0 512h128v-128h-128v128zM0 256h128v-128h-128v128zM0 768h128v-128h-128v128zM256 512h512v-128h-512v128zM256 256h512v-128h-512v128zM256 768h512v-128h-512v128z"
     }
   },
-  keys: ["Shift-Mod-8"]
+  keys: ["Shift-Ctrl-8"]
 })
 
 // ;; #path=ordered_list:wrap #kind=command
 // Wrap the selection in an ordered list.
 //
-// **Keybindings:** Shift-Mod-8
+// **Keybindings:** Shift-Ctrl-9
 OrderedList.register("command", "wrap", {
   derive: {list: true},
   label: "Wrap the selection in an ordered list",
@@ -207,13 +207,13 @@ OrderedList.register("command", "wrap", {
       path: "M320 512h448v-128h-448v128zM320 768h448v-128h-448v128zM320 128v128h448v-128h-448zM79 384h78v-256h-36l-85 23v50l43-2v185zM189 590c0-36-12-78-96-78-33 0-64 6-83 16l1 66c21-10 42-15 67-15s32 11 32 28c0 26-30 58-110 112v50h192v-67l-91 2c49-30 87-66 87-113l1-1z"
     }
   },
-  keys: ["Shift-Mod-9"]
+  keys: ["Shift-Ctrl-9"]
 })
 
 // ;; #path=blockquote:wrap #kind=command
 // Wrap the selection in a block quote.
 //
-// **Keybindings:** Shift-Mod-.
+// **Keybindings:** Shift-Ctrl-.
 BlockQuote.register("command", "wrap", {
   derive: true,
   label: "Wrap the selection in a block quote",
@@ -225,7 +225,7 @@ BlockQuote.register("command", "wrap", {
       path: "M0 448v256h256v-256h-128c0 0 0-128 128-128v-128c0 0-256 0-256 256zM640 320v-128c0 0-256 0-256 256v256h256v-256h-128c0 0 0-128 128-128z"
     }
   },
-  keys: ["Shift-Mod-."]
+  keys: ["Shift-Ctrl-."]
 })
 
 // ;; #path=hard_break:insert #kind=command
@@ -268,18 +268,63 @@ ListItem.register("command", "split", {
   keys: ["Enter(50)"]
 })
 
+function selectedListItems(pm, type) {
+  let {node, from, to} = pm.selection, $from = pm.doc.resolve(from)
+  if (node && node.type == type) return {from, to, depth: $from.depth + 1}
+
+  let itemDepth = $from.parent.type == type ? $from.depth
+      : $from.depth > 0 && $from.node($from.depth - 1).type == type ? $from.depth - 1 : null
+  if (itemDepth == null) return
+
+  let $to = pm.doc.resolve(to)
+  if ($from.sameDepth($to) < itemDepth - 1) return null
+  return {from: $from.before(itemDepth),
+          to: $to.after(itemDepth),
+          depth: itemDepth}
+}
+
+ListItem.register("command", "lift", {
+  label: "Lift the selected list items to an outer list",
+  run(pm) {
+    let selected = selectedListItems(pm, this)
+    if (!selected || selected.depth < 3) return false
+    let $from = pm.doc.resolve(pm.selection.from)
+    if ($from.node(selected.depth - 2).type != this) return false
+    let tr = pm.tr.splitIfNeeded(selected.to, 2).splitIfNeeded(selected.from, 2)
+    tr.step("ancestor", tr.map(selected.from).pos, tr.map(selected.to, -1).pos, {depth: 2})
+    return tr.apply(pm.apply.scroll)
+  },
+  keys: ["Mod-[(20)"]
+})
+
+ListItem.register("command", "sink", {
+  label: "Sink the selected list items into an inner list",
+  run(pm) {
+    let selected = selectedListItems(pm, this)
+    if (!selected) return false
+    let $from = pm.doc.resolve(pm.selection.from), startIndex = $from.index(selected.depth - 1)
+    if (startIndex == 0) return false
+    let parent = $from.node(selected.depth - 1), before = parent.child(startIndex - 1)
+    let tr = pm.tr.wrap(selected.from, selected.to, parent.type, parent.attrs)
+    if (before.lastChild && before.lastChild.type == parent.type)
+      tr.join(selected.from, 2)
+    return tr.apply(pm.apply.scroll)
+  },
+  keys: ["Mod-](20)"]
+})
+
 for (let i = 1; i <= 10; i++)
   // ;; #path=:heading::make_ #kind=command
   // The commands `make1` to `make6` set the textblocks in the
   // selection to become headers with the given level.
   //
-  // **Keybindings:** Shift-Mod-1 through Shift-Mod-6
+  // **Keybindings:** Shift-Ctrl-1 through Shift-Ctrl-6
   Heading.registerComputed("command", "make" + i, type => {
     let attrs = {level: String(i)}
     if (i <= type.maxLevel) return {
       derive: {name: "make", attrs},
       label: "Change to heading " + i,
-      keys: i <= 6 && [`Shift-Mod-${i}`],
+      keys: i <= 6 && [`Shift-Ctrl-${i}`],
       menu: {
         group: "textblockHeading", rank: 30 + i,
         display: {type: "label", label: "Level " + i},
@@ -291,11 +336,11 @@ for (let i = 1; i <= 10; i++)
 // ;; #path=paragraph:make #kind=command
 // Set the textblocks in the selection to be regular paragraphs.
 //
-// **Keybindings:** Shift-Mod-0
+// **Keybindings:** Shift-Ctrl-0
 Paragraph.register("command", "make", {
   derive: true,
   label: "Change to paragraph",
-  keys: ["Shift-Mod-0"],
+  keys: ["Shift-Ctrl-0"],
   menu: {
     group: "textblock", rank: 10,
     display: {type: "label", label: "Plain"},
@@ -306,11 +351,11 @@ Paragraph.register("command", "make", {
 // ;; #path=code_block:make #kind=command
 // Set the textblocks in the selection to be code blocks.
 //
-// **Keybindings:** Shift-Mod-\
+// **Keybindings:** Shift-Ctrl-\
 CodeBlock.register("command", "make", {
   derive: true,
   label: "Change to code block",
-  keys: ["Shift-Mod-\\"],
+  keys: ["Shift-Ctrl-\\"],
   menu: {
     group: "textblock", rank: 20,
     display: {type: "label", label: "Code"},
