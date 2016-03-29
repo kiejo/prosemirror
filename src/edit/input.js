@@ -362,12 +362,28 @@ function toClipboard(doc, from, to, dataTransfer) {
   dataTransfer.setData("text/plain", toText(slice.content))
 }
 
+// :: (text: string) → string #path=ProseMirror#events#transformPastedText
+// Fired when plain text is pasted. Handlers must return the given
+// string or a [transformed](#EventMixin.signalPipelined) version of
+// it.
+
+// :: (html: string) → string #path=ProseMirror#events#transformPastedHTML
+// Fired when html content is pasted or dragged into the editor.
+// Handlers must return the given string or a
+// [transformed](#EventMixin.signalPipelined) version of it.
+
+// :: (slice: Slice) → Slice #path=ProseMirror#events#transformPasted
+// Fired when something is pasted or dragged into the editor. The
+// given slice represents the pasted content, and your handler can
+// return a modified version to manipulate it before it is inserted
+// into the document.
+
 // : (ProseMirror, DataTransfer, ?bool) → ?Slice
 function fromClipboard(pm, dataTransfer, plainText) {
   let txt = dataTransfer.getData("text/plain")
   let html = dataTransfer.getData("text/html")
   if (!html && !txt) return null
-  let doc
+  let doc, slice
   if ((plainText || !html) && txt) {
     // Allow conversion of pasted text to a custom format (e.g. json)
     // Workaround until ProseMirror/prosemirror#221 is closed
@@ -382,13 +398,14 @@ function fromClipboard(pm, dataTransfer, plainText) {
     let wrap = dom.querySelector("[pm-context]"), context, contextNode, found
     if (wrap && (context = /^(\w+) (\d+) (\d+)$/.exec(wrap.getAttribute("pm-context"))) &&
         (contextNode = pm.schema.nodes[context[1]]) && contextNode.defaultAttrs &&
-        (found = parseFromContext(wrap, contextNode, +context[2], +context[3]))) {
-      return found
-    }
-    doc = fromDOM(pm.schema, dom)
+        (found = parseFromContext(wrap, contextNode, +context[2], +context[3])))
+      slice = found
+    else
+      doc = fromDOM(pm.schema, dom)
   }
-  return doc.slice(findSelectionAtStart(doc).from,
-                   findSelectionAtEnd(doc).to)
+  if (!slice)
+    slice = doc.slice(findSelectionAtStart(doc).from, findSelectionAtEnd(doc).to)
+  return pm.signalPipelined("transformPasted", slice)
 }
 
 function parseFromContext(dom, contextNode, openLeft, openRight) {
@@ -414,16 +431,6 @@ handlers.copy = handlers.cut = (pm, e) => {
   if (e.type == "cut" && !empty)
     pm.tr.delete(from, to).apply()
 }
-
-// :: (text: string) → string #path=ProseMirror#events#transformPastedText
-// Fired when plain text is pasted. Handlers must return the given
-// string or a [transformed](#EventMixin.signalPipelined) version of
-// it.
-
-// :: (html: string) → string #path=ProseMirror#events#transformPastedHTML
-// Fired when html content is pasted. Handlers must return the given
-// string or a [transformed](#EventMixin.signalPipelined) version of
-// it.
 
 handlers.paste = (pm, e) => {
   if (!hasFocus(pm)) return
